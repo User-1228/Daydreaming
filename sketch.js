@@ -463,7 +463,6 @@ function renderIndicator(x, y, angle, other) {
 
   textSize(12);
   textStyle(BOLD);
-  let nameStr = other.name;
   let txtWidth = textWidth(nameStr);
   let padX = 6;
   let padY = 3;
