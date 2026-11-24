@@ -106,7 +106,9 @@ function getOtherCharacters() {
   let list = [...bots];
   for (let id in networkPlayers) {
     if (networkPlayers.hasOwnProperty(id)) {
-      list.push(networkPlayers[id]);
+      if (id !== myPlayerId) {
+        list.push(networkPlayers[id]);
+      }
     }
   }
   return list;
@@ -122,6 +124,11 @@ function getOtherCharacters() {
 function setup() {
   let canvas = createCanvas(VIEW_WIDTH, VIEW_HEIGHT);
   canvas.parent("game-container");
+  if (canvas && canvas.elt) {
+    canvas.elt.addEventListener("click", () => {
+      window.focus();
+    });
+  }
 
   textAlign(CENTER, CENTER);
 
@@ -186,8 +193,10 @@ function draw() {
   // Draw other characters (Bot 1, Bot 2, and remote players) who are VISIBLE
   for (let i = 0; i < others.length; i++) {
     let other = others[i];
-    if (isPlayerInCamera(other)) {
-      drawPlayer(other);
+    if (other && typeof other.x === "number" && typeof other.y === "number") {
+      if (isPlayerInCamera(other)) {
+        drawPlayer(other);
+      }
     }
   }
 
@@ -288,6 +297,12 @@ function initLobbyControls() {
     // Smoothly hide the lobby overlay
     lobbyScreen.classList.add("hidden");
 
+    // Remove focus from input so p5.js immediately receives keyboard controls (WASD/Arrows)
+    usernameInput.blur();
+    if (typeof window !== "undefined") {
+      window.focus();
+    }
+
     // Enable in-game movement & collisions
     isInGame = true;
 
@@ -355,8 +370,11 @@ function drawOffScreenIndicators(others) {
   for (let i = 0; i < others.length; i++) {
     let other = others[i];
 
-    // If character is already on-screen, skip
-    if (isPlayerInCamera(other)) {
+    // Safety checks for remote entity integrity
+    if (!other || typeof other.x !== "number" || typeof other.y !== "number") {
+      continue;
+    }
+    if (other.id === myPlayerId || isPlayerInCamera(other)) {
       continue;
     }
 
@@ -368,6 +386,8 @@ function drawOffScreenIndicators(others) {
 
     let dx = otherScreenX - localScreenX;
     let dy = otherScreenY - localScreenY;
+    if (dx === 0 && dy === 0) continue;
+
     let angle = atan2(dy, dx);
 
     const minX = 26;
@@ -378,9 +398,10 @@ function drawOffScreenIndicators(others) {
     let dirX = cos(angle);
     let dirY = sin(angle);
 
-    let tX = dirX > 0 ? (maxX - localScreenX) / dirX : (minX - localScreenX) / dirX;
-    let tY = dirY > 0 ? (maxY - localScreenY) / dirY : (minY - localScreenY) / dirY;
+    let tX = dirX > 0.0001 ? (maxX - localScreenX) / dirX : (dirX < -0.0001 ? (minX - localScreenX) / dirX : Infinity);
+    let tY = dirY > 0.0001 ? (maxY - localScreenY) / dirY : (dirY < -0.0001 ? (minY - localScreenY) / dirY : Infinity);
     let t = min(tX, tY);
+    if (!isFinite(t) || t < 0) t = 0;
 
     let indicatorX = constrain(localScreenX + t * dirX, minX, maxX);
     let indicatorY = constrain(localScreenY + t * dirY, minY, maxY);
@@ -390,6 +411,11 @@ function drawOffScreenIndicators(others) {
 }
 
 function renderIndicator(x, y, angle, other) {
+  if (!isFinite(x) || !isFinite(y) || !isFinite(angle)) return;
+
+  let nameStr = (other && other.name) ? String(other.name) : "Player";
+  let col = (other && other.color) ? other.color : "#48cae4";
+
   push();
 
   // 1. Draw Directional Arrow
@@ -399,7 +425,7 @@ function renderIndicator(x, y, angle, other) {
 
   stroke(255);
   strokeWeight(2);
-  fill(other.color);
+  fill(col);
 
   triangle(11, 0, -8, -7, -8, 7);
   pop();
@@ -520,10 +546,10 @@ function updateCollectibles() {
 
   for (let id in sharedCollectibles) {
     let item = sharedCollectibles[id];
-    if (!item || item.collected) continue;
+    if (!item || item.collected || typeof item.x !== "number" || typeof item.y !== "number") continue;
 
     let d = dist(player.x, player.y, item.x, item.y);
-    if (d < player.radius + item.radius) {
+    if (d < player.radius + (item.radius || 12)) {
       if (typeof attemptCollectItemInFirebase === "function") {
         attemptCollectItemInFirebase(
           id,
@@ -551,7 +577,7 @@ function updateCollectibles() {
 function drawCollectibles() {
   for (let id in sharedCollectibles) {
     let item = sharedCollectibles[id];
-    if (!item || item.collected) continue;
+    if (!item || item.collected || typeof item.x !== "number" || typeof item.y !== "number") continue;
 
     if (item.type === "star") {
       drawStarItem(item.x, item.y, item.radius);
